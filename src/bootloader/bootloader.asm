@@ -1,26 +1,5 @@
 	ORG 0x7c00
-load_kernel:
-  ;; disable interrupts
-  cli
-
-  ;; initialize segment registers
-  mov ax, 0
-  mov ss, ax
-  mov ds, ax
-  mov es, ax
-  mov fs, ax
-  mov gs, ax
-
-  ;; set stack pointer
-  mov sp, 0x6000
-  
-  ;; canonicalize segment:offset
-  ;; ljmp  $0, $next_line_of_code
-  ;;  next_line_of_code:
-  
-  ;; enable interrupts
-  sti
-
+	
 	;; input arguments to int 13h
 	xor ax, ax
 	mov es, ax
@@ -85,6 +64,29 @@ load_hard_drive_done:
 	mov si, done
 	jmp print_and_halt
 
+load_kernel:
+	;; disable interrupts
+	cli
+
+	;; initialize segment registers
+	mov ax, 0
+	mov ss, ax
+	mov ds, ax
+	mov es, ax
+	mov fs, ax
+	mov gs, ax
+
+	;; set stack pointer
+	mov sp, 0x6000
+	
+	;; canonicalize segment:offset
+	;; ljmp  $0, $next_line_of_code
+	;;  next_line_of_code:
+	
+	;; enable interrupts
+	sti
+
+	
 done db 'this code has done its job', $0
 err_2 db 'extra: '	
 bootloader_error_text db 'could not find the kernel', $0
@@ -95,5 +97,13 @@ db 0x55
 db 0xAA
 ;==================================
 db 'DVOS'
-
+;==================================
+	
+	
+	
+	
+	
+	
+;==================================
 times $400-($-$$) db 0
+;==================================
