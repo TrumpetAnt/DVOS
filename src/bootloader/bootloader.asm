@@ -23,83 +23,109 @@ load_kernel:
   sti
 
 	;; input arguments to int 13h
-	mov ax, $0
+	xor ax, ax
 	mov es, ax
 	mov bx, $7e00
-	mov dh, $0
-	mov dl, [drive]
+	xor dh, dh
 	mov ah, $2
 	mov al, $1
-	mov ch, $0
+	xor ch, ch
 	mov cl, $2
 	;; read sectors from drive
 	int 13h
 
-	;; if int 13h fails, try again
-	jc try_again
+	;; if int 13h fails, try again, else done
+	jnc load_hard_drive_done
+	
+	;; loop has been unroled
+	mov ah, $0
+	int 10h
 
-	;; test if 0x44564f53 (DVOS) exist
-	cmp word[0x7e00], 0x4F53
-	jne try_again_2
-	cmp word[0x7e02], 0x4456
-	jne try_again_2
+	mov ah, $2
+	int 13h
+
+	jnc load_hard_drive_done
+
+	mov ah, $0
+	int 10h
+
+	mov ah, $2
+	int 13h
+
+	jnc load_hard_drive_done
+
+	;; print error
+print_error_and_halt:	
+	mov si, bootloader_error_text
+print_and_halt:	
+	mov ah, $e
+	mov bh, $0
+	cld
+	mov ch, $0
+print_loop:
+	lodsb
+	mov cl, al
+	jcxz halt
+	int 10h
+	jmp print_loop
+halt:
+	hlt
+	jmp halt
+	
+load_hard_drive_done:
+	;; test if 0x534f5644 (DVOS) exist
+	cmp word[0x7e00], 0x5644
+	jne print_error_and_halt
+	cmp word[0x7e02], 0x534f
+	jne print_error_and_halt
+	
 	;; done
 	;; [insert code here]
-
-	;; try the same drive 5 times
-try_again:
-	inc byte[try]
-	cmp byte[try], $5
-	jne load_kernel
 	
-	;; try with a new drive
-try_again_2:
-	;; reset number of tries
-	mov [try], $0
+	;; temp code
+	mov si, done
+	jmp print_and_halt
 
-	;; change to a new drive
-	cmp byte[drive], $0
-	je drive_b
-	cmp byte[drive], $1
-	je drive_c
-	cmp byte[drive], 0x80
-	je drive_d
-	cmp byte[drive], 0x81
-	je drive_e
+load_kernel:
+	;; disable interrupts
+	cli
+
+	;; initialize segment registers
+	mov ax, 0
+	mov ss, ax
+	mov ds, ax
+	mov es, ax
+	mov fs, ax
+	mov gs, ax
+
+	;; set stack pointer
+	mov sp, 0x6000
 	
-	;; error os not found
-	;; [insert code here]
-
-	;; change drive to test to B:
-drive_b:
-	mov [drive], $1
-	jmp load_kernel
-
-	;; change drive to test to C:
-drive_c:
-	mov [drive], 0x80
-	jmp load_kernel
-
-	;; change drive to test to D:
-drive_d:
-	mov [drive], 0x81
-	jmp load_kernel
-
-	;; change drive to test to E:
-drive_e:
-	mov [drive], 0xe0
-	jmp load_kernel
+	;; canonicalize segment:offset
+	;; ljmp  $0, $next_line_of_code
+	;;  next_line_of_code:
 	
-	;; start with testing drive A:
-	drive db 0
-
-	;; number of tries
-	try db 0
+	;; enable interrupts
+	sti
 
 	
+done db 'this code has done its job', $0
+err_2 db 'extra: '	
+bootloader_error_text db 'could not find the kernel', $0
 	;; puting 0xaa55 at the end of the file to make sure that the BIOS can find/load this
 ;==================================
 times $1FE-($-$$) db 0
 db 0x55
 db 0xAA
+;==================================
+db 'DVOS'
+;==================================
+	
+	
+	
+	
+	
+	
+;==================================
+times $400-($-$$) db 0
 ;==================================
