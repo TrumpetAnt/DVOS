@@ -1,6 +1,6 @@
 	use16
 	ORG 0x7c00
-
+	
 	;; input arguments to int 13h
 	xor ax, ax
 	mov es, ax
@@ -58,12 +58,57 @@ load_hard_drive_done:
 	cmp word[0x7e02], 0x534f
 	jne print_error_and_halt
 	
-	;; done
-	;; [insert code here]
+	;; test if long mode exist (64-bit protected mode is called long mode)
+	mov sp, 0x7000
+	mov bp, sp
+	xor ax, ax
+	add ax, ax
+	pushf
+	pop ax
+	test ax, $2
+	jz bit_16_error
 	
+	pushfd
+	pop eax
+	xor eax, 0x200000
+	mov ebx, eax
+	push eax
+	popfd
+	pushfd
+	pop eax
+	mov ecx, ebx
+	xor ecx, 0x200000
+	push ecx
+	popfd
+	test eax, ebx
+	jz bit_32_error
+
+	mov eax, 0x80000000
+	cpuid
+	cmp eax, 0x80000001
+	jb bit_32_error
+
+	mov eax, 0x80000001
+	cpuid
+	test edx, 0x20000000
+	jz bit_32_error
+
+	;; long mode exist
+	;; [insert code here]
+
 	;; temp code
 	mov si, done
 	jmp print_and_halt
+	
+	
+bit_16_error:
+	mov si, bit_16_error_text
+	jmp print_and_halt
+
+bit_32_error:
+	mov si, bit_32_error_text
+	jmp print_and_halt
+	
 
 load_kernel:
 	;; disable interrupts
@@ -90,6 +135,9 @@ load_kernel:
 	
 done db 'this code has done its job', $0
 bootloader_error_text db 'could not find the kernel', $0
+bit_16_error_text db 'somehow you manage to boot this on a 16-bit machine', $0
+bit_32_error_text db 'DVOS only suport 64-bit machines and this is a 32-bit machine', $0
+	
 
 ;; puting 0xaa55 at the end of the file to make sure that the BIOS can find/load this
 ;==================================
