@@ -1,3 +1,4 @@
+	use16
 	ORG 0x7c00
 	
 	;; input arguments to int 13h
@@ -15,7 +16,7 @@
 	;; if int 13h fails, try again, else done
 	jnc load_hard_drive_done
 	
-	;; loop has been unroled
+	;; loop has been unrolled
 	mov ah, $0
 	int 10h
 
@@ -88,9 +89,9 @@ load_kernel:
 
 	
 done db 'this code has done its job', $0
-err_2 db 'extra: '	
 bootloader_error_text db 'could not find the kernel', $0
-	;; puting 0xaa55 at the end of the file to make sure that the BIOS can find/load this
+
+;; puting 0xaa55 at the end of the file to make sure that the BIOS can find/load this
 ;==================================
 times $1FE-($-$$) db 0
 db 0x55
