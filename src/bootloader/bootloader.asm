@@ -122,89 +122,76 @@ load_hard_drive_done:
 	mov ax, 2401h
 	int 15h
 
-	;; cleare the memory from 0x7000 to 0x7c00
+	;; clear the memory from 0x7000 to 0x7c00
 	xor eax, eax
 	mov ecx, 0x300
 	rep stosd
 	mov di, si
 
-	;; [insert code here]
-	
-	;; get system memory map
+	std
 	mov ebx, 0x0
-smap_loop:	
+	mov cx, 0xc0
+smap_loop_dec:
+	mov [smap_array_size], cl
+smap_loop:
 	mov eax, 0x0000E820
 	mov ecx, 0x14
 	mov edx, 0x534D4150
 	int 15h
 
-	;; test if the last segment
-	jc smap_end
-	mov ecx, ebx
-	jcxz smap_end
-
-	;; test if we should save the segment
-	mov eax, [di+16]
-	cmp eax, 1
-	jnz smap_loop
-
-	;; saves ebx in edx
-	mov edx, ebx
+	jc smap_loop_end
+	cmp ebx, $0
+	jz smap_loop_end
 	
-	;; test against the last segment in the list
-	mov bx, [si+2]
-	mov ecx, [bx+4]		; BaseAddrHigh of last segment
-	mov eax, [bx]		; BaseAddrLow of last segment
+	mov cx, 0xc0
+	sub cl, [smap_array_size]
+	jcxz smap_outer_loop_end
+	push si
+	mov si, di
+	sub si, 0xc
+smap_iner_loop:
+	lodsd
+	mov edx, eax
+	lodsd
+	;; eax = BaseAddrLow, edx = BaseAddrHigh
 
-	cmp ecx, [di+4]
-	ja sort_list
-	jb list_is_maybe_sorted
+	cmp edx, [di+4]
+	jb smap_has_find_pos
 	cmp eax, [di]
-	ja sort_list
-	jb list_is_maybe_sorted
-
-	;; [insert code here]
-
-list_is_maybe_sorted:
-	add eax, [bx+8]
-	adc ecx, [bx+12]
+	jbe smap_has_find_pos
+	sub si, 0x8
+	loop smap_iner_loop
+smap_has_find_pos:
+	pop si
+	push bx
+	mov bx, cx
+	shl bx, $4
+	add eax, [si+bx+8]
+	adc edx, [si+bx+12]
+	pop bx
 	
-	cmp ecx, [di+4]
-	ja list_is_sorted
-	jb overlapping_areas_1
+	cmp edx, [di+4]
+	jb smap_move_array
 	cmp eax, [di]
-	ja list_is_sorted
-overlapping_areas_1:
-	;; [insert code here]
-	jmp smap_loop
+	jb smap_move_array
 
-list_is_sorted:
-	mov bx, [si+2]
-	mov word[bx+16], di
-	mov word[si+2], di
-	add di, 18
-	jmp smap_loop
-	
-sort_list:	
-	mov bx, [si]
-	mov bx, [bx]
-	jmp smap_list_loop_start
-smap_list_loop:
-	mov bx, [bx+16]
-smap_list_loop_start:
-	mov ecx, [bx+4]		; BaseAddrHigh of (first)/next segment
-	mov eax, [bx]		; BaseAddrLow of (first)/next segment
-	add eax, [bx+8]		; EndAddrLow of (first)/next segment
-	adc ecx, [bx+12]	; EndAddrHigh of (first)/next segment
-	
-	cmp ecx, [di+4]
-	jb smap_list_loop
-	cmp eax, [bx]
-	jmp smap_list_loop
+	;; overlaping data
 	;; [insert code here]
-	jmp smap_loop
+	jmp smap_outer_loop_end
 	
-smap_end:
+smap_move_array:
+	;; [insert code here]
+smap_outer_loop_end:
+	add di, 0x10
+	xor cx, cx
+	mov cl, [smap_array_size]
+	loop smap_loop_dec
+
+	;; smap array overflow!
+	;; [insert code here]
+
+smap_loop_end:
+	;; end of smap loop
 	;; [insert code here]
 	
 	;; temp code
@@ -226,6 +213,7 @@ bootloader_error_text db 'could not find the kernel', $0
 bit_16_error_text db 'somehow you manage to boot this on a 16-bit machine', $0
 bit_32_error_text db 'DVOS only suport 64-bit machines and this is a 32-bit machine', $0
 bootloader_unknown_error_text db 'a unknown error has happend :(', $0
+smap_array_size db $0
 	
 ;; puting 0xaa55 at the end of the file to make sure that the BIOS can find/load this
 ;==================================
