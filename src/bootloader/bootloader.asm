@@ -1,5 +1,26 @@
 	ORG 0x7c00
 load_kernel:
+  ;; disable interrupts
+  cli
+
+  ;; initialize segment registers
+  mov ax, 0
+  mov ss, ax
+  mov ds, ax
+  mov es, ax
+  mov fs, ax
+  mov gs, ax
+
+  ;; set stack pointer
+  mov sp, 0x6000
+  
+  ;; canonicalize segment:offset
+  ;; ljmp  $0, $next_line_of_code
+  ;;  next_line_of_code:
+  
+  ;; enable interrupts
+  sti
+
 	;; input arguments to int 13h
 	xor ax, ax
 	mov es, ax
