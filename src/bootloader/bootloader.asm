@@ -26,6 +26,9 @@
 	;; enable interrupts
 	sti
 	
+	;; clear direction flag, "string" operations will count towards bigger memory addresses
+	cld
+	
 	;; input arguments to int 13h
 	mov bx, $7e00
 	xor dh, dh
@@ -62,7 +65,6 @@ print_error_and_halt:
 print_and_halt:	
 	mov ah, $e
 	mov bh, $0
-	cld
 	mov ch, $0
 print_loop:
 	lodsb
@@ -120,6 +122,14 @@ load_hard_drive_done:
 	mov ax, 2401h
 	int 15h
 
+	;; cleare the memory from 0x7000 to 0x7c00
+	xor eax, eax
+	mov ecx, 0x300
+	rep stosd
+	mov di, si
+
+	;; [insert code here]
+	
 	;; get system memory map
 	mov ebx, 0x0
 smap_loop:	
@@ -133,7 +143,7 @@ smap_loop:
 	mov ecx, ebx
 	jcxz smap_end
 
-	;; test if the last segment
+	;; test if we should save the segment
 	mov eax, [di+16]
 	cmp eax, 1
 	jnz smap_loop
@@ -143,26 +153,26 @@ smap_loop:
 	
 	;; test against the last segment in the list
 	mov bx, [si+2]
-	mov ecx, [bx+4]		;BaseAddrHigh
-	mov eax, [bx]		;BaseAddrLow
+	mov ecx, [bx+4]		; BaseAddrHigh of last segment
+	mov eax, [bx]		; BaseAddrLow of last segment
 
 	cmp ecx, [di+4]
-	jb sort_list
-	ja list_is_maybe_sorted
+	ja sort_list
+	jb list_is_maybe_sorted
 	cmp eax, [di]
-	jb sort_list
-	ja list_is_maybe_sorted
+	ja sort_list
+	jb list_is_maybe_sorted
 
 	;; [insert code here]
 
 list_is_maybe_sorted:
-	add eax, [di+8]
-	adc ecx, [di+12]
+	add eax, [bx+8]
+	adc ecx, [bx+12]
 	
 	cmp ecx, [di+4]
 	ja list_is_sorted
 	jb overlapping_areas_1
-	cmp ecx, [di+4]
+	cmp eax, [di]
 	ja list_is_sorted
 overlapping_areas_1:
 	;; [insert code here]
@@ -176,9 +186,20 @@ list_is_sorted:
 	jmp smap_loop
 	
 sort_list:	
-	;; [insert code here]
+	mov bx, [si]
+	mov bx, [bx]
+	jmp smap_list_loop_start
 smap_list_loop:
-	;; [insert code here]
+	mov bx, [bx+16]
+smap_list_loop_start:
+	mov ecx, [bx+4]		; BaseAddrHigh of (first)/next segment
+	mov eax, [bx]		; BaseAddrLow of (first)/next segment
+	add eax, [bx+8]		; EndAddrLow of (first)/next segment
+	adc ecx, [bx+12]	; EndAddrHigh of (first)/next segment
+	
+	cmp ecx, [di+4]
+	jb smap_list_loop
+	cmp eax, [bx]
 	jmp smap_list_loop
 	;; [insert code here]
 	jmp smap_loop
@@ -208,7 +229,7 @@ bootloader_unknown_error_text db 'a unknown error has happend :(', $0
 	
 ;; puting 0xaa55 at the end of the file to make sure that the BIOS can find/load this
 ;==================================
-times $1FE-($-$$) db 0
+; times $1FE-($-$$) db 0
 db 0x55
 db 0xAA
 ;==================================
