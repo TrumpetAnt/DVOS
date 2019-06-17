@@ -13,6 +13,7 @@ load_kernel:
 
   ;; set stack pointer
   mov sp, 0x6000
+  mov bp, sp
   
   ;; canonicalize segment:offset
   ;; ljmp  $0, $next_line_of_code
