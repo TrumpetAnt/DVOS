@@ -1,9 +1,32 @@
 	use16
 	ORG 0x7c00
+
+	;; disable interrupts
+	cli
+
+	;; initialize segment registers
+	xor ax, ax
+	mov ss, ax
+	mov ds, ax
+	mov es, ax
+	mov fs, ax
+	mov gs, ax
+
+	;; set stack pointer
+	mov sp, 0x7000
+	mov bp, sp
+	;; set stream pointer
+	mov si, sp
+	mov di, sp
+	
+	;; canonicalize segment:offset
+	jmp  0:next_line_of_code
+	next_line_of_code:
+	
+	;; enable interrupts
+	sti
 	
 	;; input arguments to int 13h
-	xor ax, ax
-	mov es, ax
 	mov bx, $7e00
 	xor dh, dh
 	mov ah, $2
@@ -59,8 +82,6 @@ load_hard_drive_done:
 	jne print_error_and_halt
 	
 	;; test if long mode exist (64-bit protected mode is called long mode)
-	mov sp, 0x7000
-	mov bp, sp
 	xor ax, ax
 	add ax, ax
 	pushf
@@ -92,10 +113,79 @@ load_hard_drive_done:
 	cpuid
 	test edx, 0x20000000
 	jz bit_32_error
+	
+	;; long mode exist :), continue execution
 
-	;; long mode exist
+	;; enable A20
+	mov ax, 2401h
+	int 15h
+
+	;; get system memory map
+	mov ebx, 0x0
+smap_loop:	
+	mov eax, 0x0000E820
+	mov ecx, 0x14
+	mov edx, 0x534D4150
+	int 15h
+
+	;; test if the last segment
+	jc smap_end
+	mov ecx, ebx
+	jcxz smap_end
+
+	;; test if the last segment
+	mov eax, [di+16]
+	cmp eax, 1
+	jnz smap_loop
+
+	;; saves ebx in edx
+	mov edx, ebx
+	
+	;; test against the last segment in the list
+	mov bx, [si+2]
+	mov ecx, [bx+4]		;BaseAddrHigh
+	mov eax, [bx]		;BaseAddrLow
+
+	cmp ecx, [di+4]
+	jb sort_list
+	ja list_is_maybe_sorted
+	cmp eax, [di]
+	jb sort_list
+	ja list_is_maybe_sorted
+
 	;; [insert code here]
 
+list_is_maybe_sorted:
+	add eax, [di+8]
+	adc ecx, [di+12]
+	
+	cmp ecx, [di+4]
+	ja list_is_sorted
+	jb overlapping_areas_1
+	cmp ecx, [di+4]
+	ja list_is_sorted
+overlapping_areas_1:
+	;; [insert code here]
+	jmp smap_loop
+
+list_is_sorted:
+	mov bx, [si+2]
+	mov word[bx+16], di
+	mov word[si+2], di
+	add di, 18
+	jmp smap_loop
+	
+sort_list:	
+	;; [insert code here]
+smap_list_loop:
+	;; [insert code here]
+	jmp smap_list_loop
+	;; [insert code here]
+	jmp smap_loop
+	
+smap_end:
+	;; [insert code here]
+	
 	;; temp code
 	mov si, done
 	jmp print_and_halt
@@ -108,67 +198,14 @@ bit_16_error:
 bit_32_error:
 	mov si, bit_32_error_text
 	jmp print_and_halt
-	
 
-load_kernel:
-	;; disable interrupts
-	cli
-
-	;; initialize segment registers
-	mov ax, 0
-	mov ss, ax
-	mov ds, ax
-	mov es, ax
-	mov fs, ax
-	mov gs, ax
-
-	;; set stack pointer
-	mov sp, 0x6000
-	
-	;; canonicalize segment:offset
-	;; ljmp  $0, $next_line_of_code
-	;;  next_line_of_code:
-	
-	;; enable interrupts
-	sti
-
-	;FASM
-use16
-mov     ax,2403h                ;--- A20-Gate Support ---
-int     15h
-jb      a20_ns                  ;INT 15h is not supported
-cmp     ah,0
-jnz     a20_ns                  ;INT 15h is not supported
- 
-mov     ax,2402h                ;--- A20-Gate Status ---
-int     15h
-jb      a20_failed              ;couldn't get status
-cmp     ah,0
-jnz     a20_failed              ;couldn't get status
- 
-cmp     al,1
-jz      a20_activated           ;A20 is already activated
- 
-mov     ax,2401h                ;--- A20-Gate Activate ---
-int     15h
-jb      a20_failed              ;couldn't activate the gate
-cmp     ah,0
-jnz     a20_failed              ;couldn't activate the gate
- 
-a20_failed:
-	jmp print_and_halt
-	
-a20_ns:
-	jmp print_and_halt
-
-a20_activated:                  ;go on
 	
 done db 'this code has done its job', $0
 bootloader_error_text db 'could not find the kernel', $0
 bit_16_error_text db 'somehow you manage to boot this on a 16-bit machine', $0
 bit_32_error_text db 'DVOS only suport 64-bit machines and this is a 32-bit machine', $0
+bootloader_unknown_error_text db 'a unknown error has happend :(', $0
 	
-
 ;; puting 0xaa55 at the end of the file to make sure that the BIOS can find/load this
 ;==================================
 times $1FE-($-$$) db 0
