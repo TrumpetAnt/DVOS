@@ -60,9 +60,9 @@ next_line_of_code:
 	jnc load_hard_drive_done
 
 	;; print error
-print_error_and_halt:	
+print_error_and_halt:
 	mov si, bootloader_error_text
-print_and_halt:	
+print_and_halt:
 	mov ah, $e
 	mov bh, $0
 	mov ch, $0
@@ -80,10 +80,15 @@ hlt_l:
 	
 load_hard_drive_done:
 	;; test if 0x534f5644 (DVOS) exist
-	cmp word[0x7e00], 0x5644
+	cmp [0x7e00], word 0x5644
 	jne print_error_and_halt
-	cmp word[0x7e02], 0x534f
+	cmp [0x7e02], word 0x534f
 	jne print_error_and_halt
+
+	;; load in extra data at 0x5000
+	mov bx, 0x5000
+	mov cl, $3
+	int 13h
 	
 	;; test if long mode exist (64-bit protected mode is called long mode)
 	xor ax, ax
@@ -144,6 +149,7 @@ load_hard_drive_done:
 	rep stosd
 	mov di, si
 
+	;; get the memory map and put it in 0x7000 to 0x7c00
 	std
 	xor ebx, ebx
 	mov cx, 0xc0
@@ -159,22 +165,24 @@ smap_loop:
 	cmp ebx, $0
 	jz smap_loop_end
 
-	cmp dword[di+16], $1
+	cmp dword [di+16], $1
 	jz smap_continue
 	
 smap_loop_zero:
-	mov [di], dword $0
-	mov [di+4], dword $0
-	mov [di+8], dword $0
-	mov [di+12], dword $0
-	mov [di+16], dword $0
+	xor eax, eax
+	mov [di], eax
+	mov [di+4], eax
+	mov [di+8], eax
+	mov [di+12], eax
+	mov [di+16], eax
 	
 	jmp smap_loop
 
 bootloader_error_text db 'could not find the kernel', $0
-bit_16_error_text db 'somehow you manage to boot this on a 16-bit machine', $0
+bit_16_error_text db 'somehow you manage to boot this on a 16-bit machine, only 64-bit is suported :(', $0
 bit_32_error_text db 'DVOS only suport 64-bit machines and this is a 32-bit machine', $0
 smap_array_size db $0
+bootloader_crash db 'bootloader has crashed :(', $0
 	
 ;; puting 0xaa55 at the end of the file to make sure that the BIOS can find/load this
 ;==================================
@@ -301,85 +309,26 @@ smap_outer_loop_end:
 	loop smap_loop_dec_temp
 
 	;; smap array overflow!
-	;; [insert code here]
-
-	;; temp code
+	mov si, bootloader_crash
 	cld
-	push ax
-	push bx
-	mov ah, 0xe
-	mov al, 'T'
-	xor bx, bx
-	int 10h
-	pop bx
-	pop ax
-	std
-	;; temp code
-	
-	jmp smap_loop_end
+	jmp print_and_halt
 
 smap_loop_dec_temp:
 	jmp smap_loop_dec
 
 smap_loop_end:
-	;; end of smap loop
-
-	;; prints out the memory map
-	mov cx, 0xc0
-	sub cl, [smap_array_size]
-	shl cx, 0x4
-	mov si, 0x7000
-	add si, cx
-	sub si, $1
-	mov ah, 0xe
-	xor bx, bx
-	xor dh, dh
-temp_code_print_loop:
-	std
-	lodsb
 	cld
-	
-	mov dl, al
-	shr al, 0x4
-	and al, 0xf
-	or al, 0x40
-	int 10h
-	
-	mov al, dl
-	and al, 0xf
-	or al, 0x40
-	int 10h
-	
-	inc dh
-	cmp dh, $8
-	jnz temp_code_print_loop_jmp_1
-	
-	mov al, 0x20
-	int 10h
-	jmp temp_code_print_loop_jmp_2
-	
-temp_code_print_loop_jmp_1:
-	cmp dh, 0x10
-	jnz temp_code_print_loop_jmp_2
-	
-	mov al, 0x3b
-	int 10h
-	xor dh, dh
-temp_code_print_loop_jmp_2:
-	loop temp_code_print_loop
+	cmp [di+16], dword $1
+	jnz smap_end
 
-	mov cx, 0xc0
-	sub cl, [smap_array_size]
-	mov al , cl
-	shr al, 0x4
-	and al, 0xf
-	or al, 0x40
-	int 10h
-	mov al, cl
-	and al, 0xf
-	or al, 0x40
-	int 10h
-	;; print of memory map done
+	;; TODO
+	;; [insert code here]
+	;; temp code
+	mov si, bootloader_crash
+	jmp print_and_halt
+	
+smap_end:
+	;; end of "get memory map" (memory map is now in 0x7000 to 0x7c00, and the number of elements in this array is 0xc0-[smap_array_size])
 
 	;; clear the page table memory
 	mov edi, 0x1000
@@ -398,8 +347,9 @@ temp_code_print_loop_jmp_2:
 	or al, 0x7
 	mov ecx, 0x200
 page_table_loop:
-	stosb
-	add di, 0x7
+	stosd
+	add di, 0x4
+	add eax, 0x1000
 	loop page_table_loop
 
 	;; disable interrupts
@@ -409,7 +359,7 @@ page_table_loop:
 	sidt [OIDT]
 	lidt [IDT]
 
-	;; set to 64-bit pages (it is not enabling pages)
+	;; set to 64-bit pages
 	mov eax, 0xa0
 	mov cr4, eax
 
@@ -428,7 +378,9 @@ page_table_loop:
 
 	lgdt [GDT.Pointer]	; Load GDT.Pointer defined below.
 
-	jmp 0:kernel
+	;; jump to the kernel
+	;jmp 0:0xD000
+	jmp 0:halt_64
 	
 bit_16_error:
 	mov si, bit_16_error_text
@@ -436,7 +388,13 @@ bit_16_error:
 
 bit_32_error:
 	mov si, bit_32_error_text
-	jmp print_and_halt	
+	jmp print_and_halt
+	
+	use64
+halt_64:
+	hlt
+	jmp halt_64
+	use16
 	
 ;==================================
 times 0x400-($-$$) db 0
@@ -472,9 +430,3 @@ ALIGN 4
 ;==================================
 times 0x200-($-$$) db 0
 ;==================================
-
-
-	use64
-	ORG 0xD000
-kernel:
-	;; space intentionally left empty
