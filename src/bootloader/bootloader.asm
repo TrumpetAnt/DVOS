@@ -21,7 +21,7 @@
 	
 	;; canonicalize segment:offset
 	jmp  0:next_line_of_code
-	next_line_of_code:
+next_line_of_code:
 	
 	;; enable interrupts
 	sti
@@ -73,8 +73,10 @@ print_loop:
 	int 10h
 	jmp print_loop
 halt:
+	cli
+hlt_l:
 	hlt
-	jmp halt
+	jmp hlt_l
 	
 load_hard_drive_done:
 	;; test if 0x534f5644 (DVOS) exist
@@ -90,7 +92,21 @@ load_hard_drive_done:
 	pop ax
 	test ax, $2
 	jz bit_16_error
+
+	;; disable interrupts
+	cli
+
+	;; set stack pointer
+	mov esp, 0x7000
+	mov ebp, esp
+	;; set stream pointer
+	mov esi, esp
+	mov edi, esp
 	
+	;; enable interrupts
+	sti
+	
+	;; continue testing if long mode exist
 	pushfd
 	pop eax
 	xor eax, 0x200000
@@ -129,7 +145,7 @@ load_hard_drive_done:
 	mov di, si
 
 	std
-	mov ebx, 0x0
+	xor ebx, ebx
 	mov cx, 0xc0
 smap_loop_dec:
 	mov [smap_array_size], cl
@@ -142,10 +158,40 @@ smap_loop:
 	jc smap_loop_end
 	cmp ebx, $0
 	jz smap_loop_end
+
+	cmp dword[di+16], $1
+	jz smap_continue
 	
+smap_loop_zero:
+	mov [di], dword $0
+	mov [di+4], dword $0
+	mov [di+8], dword $0
+	mov [di+12], dword $0
+	mov [di+16], dword $0
+	
+	jmp smap_loop
+
+bootloader_error_text db 'could not find the kernel', $0
+bit_16_error_text db 'somehow you manage to boot this on a 16-bit machine', $0
+bit_32_error_text db 'DVOS only suport 64-bit machines and this is a 32-bit machine', $0
+smap_array_size db $0
+	
+;; puting 0xaa55 at the end of the file to make sure that the BIOS can find/load this
+;==================================
+times 0x1FE-($-$$) db 0
+db 0x55
+db 0xAA
+;==================================
+	
+db 'DVOS'
+	
+;==================================
+	
+smap_continue:
+	mov [di+16], dword $0
 	mov cx, 0xc0
 	sub cl, [smap_array_size]
-	jcxz smap_outer_loop_end
+	jcxz smap_outer_loop_end_temp
 	push si
 	mov si, di
 	sub si, 0xc
@@ -161,10 +207,17 @@ smap_iner_loop:
 	jbe smap_has_find_pos
 	sub si, 0x8
 	loop smap_iner_loop
+	jmp smap_has_find_pos
+
+smap_outer_loop_end_temp:
+	jmp smap_outer_loop_end
+	
 smap_has_find_pos:
 	pop si
 	push bx
-	mov bx, cx
+	mov bx, 0xc0
+	sub bl, [smap_array_size]
+	sub bx, cx
 	shl bx, $4
 	add eax, [si+bx+8]
 	adc edx, [si+bx+12]
@@ -176,28 +229,206 @@ smap_has_find_pos:
 	jb smap_move_array
 
 	;; overlaping data
-	;; [insert code here]
-	jmp smap_outer_loop_end
+	push eax
+	push edx
+	mov eax, [di+8]
+	mov edx, [di+12]
+	add [di], eax
+	adc [di+4], edx
+	pop edx
+	pop eax
+
+	cmp edx, [di+4]
+	ja smap_loop_zero
+	cmp eax, [di]
+	jae smap_loop_zero
+
+	sub [di], eax
+	sbb [di+4], edx
+	mov eax, [di]
+	mov edx, [di+4]
+
+	push bx
+	mov bx, 0xc0
+	sub bl, [smap_array_size]
+	sub bx, cx
+	shl bx, $4
+	add [si+bx+8], eax
+	adc [si+bx+12], edx
+	pop bx
+	
+	jmp smap_loop_zero
 	
 smap_move_array:
-	;; [insert code here]
+	push si
+	push di
+	mov eax, [di]
+	push eax
+	mov eax, [di+4]
+	push eax
+	mov eax, [di+8]
+	push eax
+	mov eax, [di+12]
+	push eax
+
+	add di, 0xc
+	mov si, di
+	sub si, 0x10
+
+	mov eax, ecx
+	mov ecx, 0xc0
+	sub cl, [smap_array_size]
+	sub ecx, eax
+	shl ecx, $2
+	
+	rep movsd
+
+	add di, $4
+	pop eax
+	mov [di+12], eax
+	pop eax
+	mov [di+8], eax
+	pop eax
+	mov [di+4], eax
+	pop eax
+	mov [di], eax
+	pop di
+	pop si
 smap_outer_loop_end:
 	add di, 0x10
 	xor cx, cx
 	mov cl, [smap_array_size]
-	loop smap_loop_dec
+	loop smap_loop_dec_temp
 
 	;; smap array overflow!
 	;; [insert code here]
 
+	;; temp code
+	cld
+	push ax
+	push bx
+	mov ah, 0xe
+	mov al, 'T'
+	xor bx, bx
+	int 10h
+	pop bx
+	pop ax
+	std
+	;; temp code
+	
+	jmp smap_loop_end
+
+smap_loop_dec_temp:
+	jmp smap_loop_dec
+
 smap_loop_end:
 	;; end of smap loop
-	;; [insert code here]
+
+	;; prints out the memory map
+	mov cx, 0xc0
+	sub cl, [smap_array_size]
+	shl cx, 0x4
+	mov si, 0x7000
+	add si, cx
+	sub si, $1
+	mov ah, 0xe
+	xor bx, bx
+	xor dh, dh
+temp_code_print_loop:
+	std
+	lodsb
+	cld
 	
-	;; temp code
-	mov si, done
-	jmp print_and_halt
+	mov dl, al
+	shr al, 0x4
+	and al, 0xf
+	or al, 0x40
+	int 10h
 	
+	mov al, dl
+	and al, 0xf
+	or al, 0x40
+	int 10h
+	
+	inc dh
+	cmp dh, $8
+	jnz temp_code_print_loop_jmp_1
+	
+	mov al, 0x20
+	int 10h
+	jmp temp_code_print_loop_jmp_2
+	
+temp_code_print_loop_jmp_1:
+	cmp dh, 0x10
+	jnz temp_code_print_loop_jmp_2
+	
+	mov al, 0x3b
+	int 10h
+	xor dh, dh
+temp_code_print_loop_jmp_2:
+	loop temp_code_print_loop
+
+	mov cx, 0xc0
+	sub cl, [smap_array_size]
+	mov al , cl
+	shr al, 0x4
+	and al, 0xf
+	or al, 0x40
+	int 10h
+	mov al, cl
+	and al, 0xf
+	or al, 0x40
+	int 10h
+	;; print of memory map done
+
+	;; clear the page table memory
+	mov edi, 0x1000
+	mov esi, edi
+	mov ecx, edi
+	xor eax, eax
+	rep stosd
+
+	;; inserting entrys
+	mov [si], word 0x2007		; setting up PML4T
+	mov [si+0x1000], word 0x3007	; setting up PDPT
+	mov [si+0x2000], word 0x4007	; setting up PDT
+	;; setting up PT
+	add si, 0x3000
+	mov di, si
+	or al, 0x7
+	mov ecx, 0x200
+page_table_loop:
+	stosb
+	add di, 0x7
+	loop page_table_loop
+
+	;; disable interrupts
+	cli
+	
+	;; Load a zero length IDT (Interrupt Descriptor Table) so that any NMI (Non-Maskable Interrupt) causes a triple fault.
+	sidt [OIDT]
+	lidt [IDT]
+
+	;; set to 64-bit pages (it is not enabling pages)
+	mov eax, 0xa0
+	mov cr4, eax
+
+	;; set pointer to PML4T
+	mov eax, 0x1000
+	mov cr3, eax
+
+	mov ecx, 0xC0000080	; Set the C-register to 0xC0000080, which is the EFER MSR.
+	rdmsr			; Read from the model-specific register.
+	or eax, 0x100		; Set the LM(Long Mode)-bit which is the 9th bit (bit 8).
+	wrmsr			; Write to the model-specific register.
+
+	mov ebx, cr0		; Activate long mode -
+	or ebx,0x80000001	; - by enabling paging and protection simultaneously.
+	mov cr0, ebx
+
+	lgdt [GDT.Pointer]	; Load GDT.Pointer defined below.
+
+	jmp 0:kernel
 	
 bit_16_error:
 	mov si, bit_16_error_text
@@ -205,30 +436,45 @@ bit_16_error:
 
 bit_32_error:
 	mov si, bit_32_error_text
-	jmp print_and_halt
+	jmp print_and_halt	
+	
+;==================================
+times 0x400-($-$$) db 0
+;==================================
 
+	ORG 0x5000
+
+ALIGN 4
+OIDT:
+OLength dw 0
+OBase dd 0
+ALIGN 4
+IDT:
+Length dw 0
+Base dd 0
 	
-done db 'this code has done its job', $0
-bootloader_error_text db 'could not find the kernel', $0
-bit_16_error_text db 'somehow you manage to boot this on a 16-bit machine', $0
-bit_32_error_text db 'DVOS only suport 64-bit machines and this is a 32-bit machine', $0
-bootloader_unknown_error_text db 'a unknown error has happend :(', $0
-smap_array_size db $0
+; Global Descriptor Table
+GDT:
+.Null:
+    dq 0x0000000000000000             ; Null Descriptor - should be present.
+ 
+.Code:
+    dq 0x00209A0000000000             ; 64-bit code descriptor (exec/read).
+    dq 0x0000920000000000             ; 64-bit data descriptor (read/write).
+ 
+ALIGN 4
+    dw 0                              ; Padding to make the "address of the GDT" field aligned on a 4-byte boundary
+ 
+.Pointer:
+    dw $ - GDT - 1                    ; 16-bit Size (Limit) of GDT.
+    dd GDT                            ; 32-bit Base Address of GDT. (CPU will zero extend to 64-bit)
 	
-;; puting 0xaa55 at the end of the file to make sure that the BIOS can find/load this
 ;==================================
-; times $1FE-($-$$) db 0
-db 0x55
-db 0xAA
+times 0x200-($-$$) db 0
 ;==================================
-db 'DVOS'
-;==================================
-	
-	
-	
-	
-	
-	
-;==================================
-times $400-($-$$) db 0
-;==================================
+
+
+	use64
+	ORG 0xD000
+kernel:
+	;; space intentionally left empty
