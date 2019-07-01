@@ -1,6 +1,9 @@
 	use16
 	ORG 0x7c00
 
+	;; segment:offset
+	;; jmp 0x18:0x7a85
+
 	;; disable interrupts
 	cli
 
@@ -44,17 +47,19 @@ next_line_of_code:
 	
 	;; loop has been unrolled
 	mov ah, $0
-	int 10h
+	int 13h
 
 	mov ah, $2
+	mov al, $1
 	int 13h
 
 	jnc load_hard_drive_done
 
 	mov ah, $0
-	int 10h
+	int 13h
 
 	mov ah, $2
+	mov al, $1
 	int 13h
 
 	jnc load_hard_drive_done
@@ -81,14 +86,18 @@ hlt_l:
 load_hard_drive_done:
 	;; test if 0x534f5644 (DVOS) exist
 	cmp [0x7e00], word 0x5644
-	jne print_error_and_halt
+	jnz print_error_and_halt
 	cmp [0x7e02], word 0x534f
-	jne print_error_and_halt
+	jnz print_error_and_halt
 
 	;; load in extra data at 0x5000
+	mov ah, $2
+	mov al, $1
 	mov bx, 0x5000
-	mov cl, $3
+	inc cl
 	int 13h
+
+	mov [drive_number], dl
 	
 	;; test if long mode exist (64-bit protected mode is called long mode)
 	xor ax, ax
@@ -179,21 +188,30 @@ smap_loop_zero:
 	jmp smap_loop
 
 bootloader_error_text db 'could not find the kernel', $0
-bit_16_error_text db 'somehow you manage to boot this on a 16-bit machine, only 64-bit is suported :(', $0
+bit_16_error_text db 'somehow you manage to boot this on a 16-bit machine, only 64-bit is suported', $0
 bit_32_error_text db 'DVOS only suport 64-bit machines and this is a 32-bit machine', $0
-smap_array_size db $0
-bootloader_crash db 'bootloader has crashed :(', $0
+bootloader_crash db 'bootload crash :(', $0
 	
-;; puting 0xaa55 at the end of the file to make sure that the BIOS can find/load this
+;; puting 0xaa55 at the end of the first 512 bytes to make sure that the BIOS can find/load this
 ;==================================
 times 0x1FE-($-$$) db 0
 db 0x55
 db 0xAA
 ;==================================
-	
+
 db 'DVOS'
+smap_array_size db $0
+drive_number db $0
 	
 ;==================================
+
+bit_16_error:
+	mov si, bit_16_error_text
+	jmp print_and_halt
+
+bit_32_error:
+	mov si, bit_32_error_text
+	jmp print_and_halt
 	
 smap_continue:
 	mov [di+16], dword $0
@@ -309,8 +327,9 @@ smap_outer_loop_end:
 	loop smap_loop_dec_temp
 
 	;; smap array overflow!
-	mov si, bootloader_crash
 	cld
+bootloader_crash_c:
+	mov si, bootloader_crash
 	jmp print_and_halt
 
 smap_loop_dec_temp:
@@ -324,11 +343,43 @@ smap_loop_end:
 	;; TODO
 	;; [insert code here]
 	;; temp code
-	mov si, bootloader_crash
-	jmp print_and_halt
+	jmp bootloader_crash_c
 	
 smap_end:
 	;; end of "get memory map" (memory map is now in 0x7000 to 0x7c00, and the number of elements in this array is 0xc0-[smap_array_size])
+
+	;; load in the kernel to 0xD000
+	;; test that the first entry in the memory map look like how we expect it to look
+	;; TODO fix this
+	mov bx, 0x7000
+	;jmp entry_test_end
+	;cmp dword [bx], $0
+	;jnz bootloader_crash_c
+	;cmp dword [bx+4], $0
+	;jnz bootloader_crash_c
+	;cmp dword [bx+12], $0
+	;ja entry_test_end
+	;cmp dword [bx+8], 0x9FC00
+	;jbe bit_16_error
+entry_test_end:
+	
+	mov eax, 0x7                 ; You might want to check for page 7 first!
+	xor ecx, ecx
+	cpuid
+	test ecx, 0x10000
+	jnz bootloader_crash_c
+
+	;; input arguments to int 13h
+	mov bx, 0xD000
+	xor dh, dh
+	mov dl, [drive_number]
+	mov ah, $2
+	mov al, 0x1
+	xor ch, ch
+	mov cl, $4
+	;; read sectors from drive
+	int 13h
+	;; kernel is now in 0xD000
 
 	;; clear the page table memory
 	mov edi, 0x1000
@@ -338,13 +389,13 @@ smap_end:
 	rep stosd
 
 	;; inserting entrys
-	mov [si], word 0x2007		; setting up PML4T
-	mov [si+0x1000], word 0x3007	; setting up PDPT
-	mov [si+0x2000], word 0x4007	; setting up PDT
+	mov [si], word 0x2003		; setting up PML4T
+	mov [si+0x1000], word 0x3003	; setting up PDPT
+	mov [si+0x2000], word 0x4003	; setting up PDT
 	;; setting up PT
 	add si, 0x3000
 	mov di, si
-	or al, 0x7
+	or al, 0x3
 	mov ecx, 0x200
 page_table_loop:
 	stosd
@@ -354,6 +405,14 @@ page_table_loop:
 
 	;; disable interrupts
 	cli
+
+	;; Disable IRQs
+	mov al, 0xFF		; Out 0xFF to 0xA1 and 0x21 to disable all IRQs.
+	out 0xA1, al
+	out 0x21, al
+
+	nop
+	nop
 	
 	;; Load a zero length IDT (Interrupt Descriptor Table) so that any NMI (Non-Maskable Interrupt) causes a triple fault.
 	sidt [OIDT]
@@ -371,62 +430,54 @@ page_table_loop:
 	rdmsr			; Read from the model-specific register.
 	or eax, 0x100		; Set the LM(Long Mode)-bit which is the 9th bit (bit 8).
 	wrmsr			; Write to the model-specific register.
-
+	
 	mov ebx, cr0		; Activate long mode -
 	or ebx,0x80000001	; - by enabling paging and protection simultaneously.
 	mov cr0, ebx
 
-	lgdt [GDT.Pointer]	; Load GDT.Pointer defined below.
+	lgdt [GTDPointer]	; Load GDT.Pointer defined below.
 
 	;; jump to the kernel
-	;jmp 0:0xD000
-	jmp 0:halt_64
-	
-bit_16_error:
-	mov si, bit_16_error_text
-	jmp print_and_halt
-
-bit_32_error:
-	mov si, bit_32_error_text
-	jmp print_and_halt
-	
-	use64
-halt_64:
-	hlt
-	jmp halt_64
-	use16
+	jmp 0x0008:0xD000
 	
 ;==================================
 times 0x400-($-$$) db 0
 ;==================================
 
 	ORG 0x5000
-
-ALIGN 4
+	;; warning sector is manually align
+	
+; ALIGN 4
 OIDT:
 OLength dw 0
 OBase dd 0
-ALIGN 4
+; ALIGN 4
 IDT:
 Length dw 0
 Base dd 0
-	
+
+; ALIGN 8
+dd 0
+
 ; Global Descriptor Table
 GDT:
 .Null:
+;   dq 0x008000000000FFFF             ; Null Descriptor - should be present.
     dq 0x0000000000000000             ; Null Descriptor - should be present.
- 
+
 .Code:
-    dq 0x00209A0000000000             ; 64-bit code descriptor (exec/read).
+    dq 0x00AF9A0000000000             ; 64-bit code descriptor (exec/read).
     dq 0x0000920000000000             ; 64-bit data descriptor (read/write).
- 
-ALIGN 4
-    dw 0                              ; Padding to make the "address of the GDT" field aligned on a 4-byte boundary
- 
-.Pointer:
+;   dq 0x008F9A0000000000             ; 32-bit code descriptor (exec/read).
+	
+;ALIGN 4
+    ;dw 0                              ; Padding to make the "address of the GDT" field aligned on a 4-byte boundary
+
+GTDPointer:
     dw $ - GDT - 1                    ; 16-bit Size (Limit) of GDT.
     dd GDT                            ; 32-bit Base Address of GDT. (CPU will zero extend to 64-bit)
-	
+
+somethin db 0xab
 ;==================================
 times 0x200-($-$$) db 0
 ;==================================
