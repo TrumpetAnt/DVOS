@@ -466,7 +466,7 @@ GDT:
     dq 0x0000000000000000             ; Null Descriptor - should be present.
 
 .Code:
-    dq 0x00AF9A0000000000             ; 64-bit code descriptor (exec/read).
+    dq 0x00AF9A000000FFFF             ; 64-bit code descriptor (exec/read).
     dq 0x0000920000000000             ; 64-bit data descriptor (read/write).
 ;   dq 0x008F9A0000000000             ; 32-bit code descriptor (exec/read).
 	
