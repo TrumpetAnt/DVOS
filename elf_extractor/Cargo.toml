@@ -1,0 +1,8 @@
+[package]
+name = "elf_extractor"
+version = "0.1.0"
+authors = ["Henrik <henenenerik@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+goblin = "0.0.14"
