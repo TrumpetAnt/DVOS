@@ -1,0 +1,31 @@
+
+bootloader-enter 64-bit, load everything else to memory +
+
+dispatcher-asm ?
+
+scheduler-asm/rust X
+
+page_system-asm ?
+    memory_manager-rust X
+
+grafic-rust/(asm) X
+    (simple text output +)
+
+user_input-rust? X
+    (simple system-? +)
+
+network-rust/(asm) X
+
+disk_manager-asm X
+    file_system-rust X
+
+os_interupt/exeptions-asm + (something)
+
+user_level_signals-rust X
+
+
+
+
+
+
+

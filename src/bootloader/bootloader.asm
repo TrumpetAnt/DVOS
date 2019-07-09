@@ -477,7 +477,8 @@ GTDPointer:
     dw $ - GDT - 1                    ; 16-bit Size (Limit) of GDT.
     dd GDT                            ; 32-bit Base Address of GDT. (CPU will zero extend to 64-bit)
 
-somethin db 0xab
+dw 0
+	
 ;==================================
 times 0x200-($-$$) db 0
 ;==================================
