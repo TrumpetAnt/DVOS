@@ -1,0 +1,7 @@
+[package]
+name = "testar_lib"
+version = "0.1.0"
+authors = ["Peter <peter.ohlmer@yahoo.com>"]
+edition = "2018"
+
+[dependencies]

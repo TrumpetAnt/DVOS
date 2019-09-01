@@ -1,0 +1,8 @@
+#[no_mangle] är vad som exporterar namnet
+"~/.cargo/config" filen
+"ar x target/release/libhejsan.a" för att ta isär en ar fil (testa att använda ld)
+cp dvostools/DVOS/rust/testar_rust/hejsan-b03764a01f953dcc.hejsan.dwbnz91p-cgu.0.rcgu.o dvosboot/DVOS/elf_extractor/
+cp dvostools/DVOS/rust/testar_rust/target/release/testar_rust dvosboot/DVOS/elf_extractor/
+readelf -a hejsan-b03764a01f953dcc.hejsan.dwbnz91p-cgu.0.rcgu.o
+readelf -a testar_rust
+readelf -a a.out

@@ -1,0 +1,15 @@
+[package]
+name = "testar_rust"
+version = "0.1.0"
+authors = ["Peter <peter.ohlmer@yahoo.com>"]
+edition = "2018"
+
+[profile.dev]
+panic="abort"
+
+[profile.release]
+panic="abort"
+
+[lib]
+name = "hejsan"
+crate-type=["staticlib"]
