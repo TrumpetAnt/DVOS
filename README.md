@@ -21,7 +21,7 @@ The *memory* file is a ascii formatted file that is a list of `name pos` separat
 `pos` is either a hex number that corresponds to where in memory it should be placed or 'xx' to indicate that to should be placed after the previous item in the list. Examples: `0xf0d0`, `xx`, `0xdeadbeaf`.
 #### Struct synchronization
 All exported/tracked structs has to have a unique name.<br />
-By writing `//-e` before a struct declaration in rust, than that struct is being exported/tracked. This is only neaded on structs that is also being handled by asm code [or rust code in another project?].<br />
+By writing `//-e` before a struct declaration in rust, than that struct is being exported/tracked. This is only neaded on structs that is also being handled by asm code [or rust code in another project?]. Don't forget to add the `#[repr(C)]` after the `//-e`.<br />
 By writing `;-w name` in asm where `name` is the name of the struct than the builder is going to produce a warning if the struct is being changed. When the struct is being change the builder is going to change `;-w name` to `;-w name 1` and is going to continue to produce warnings until it is change back to either `;-w name` or `;-w name 0`.<br />
 By writing `//-i name` in rust where `name` is the name of the struct than the builder is going to copy in that struct here. If a change is made in the exported struct it is going to be changed in this struct to, and changes to this struct is going to be ignored.
 #### *data* file
