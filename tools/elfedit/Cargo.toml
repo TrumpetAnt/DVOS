@@ -1,0 +1,8 @@
+[package]
+name = "check"
+version = "0.1.0"
+authors = ["Henrik <henenenerik@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+byteorder = "1.3.2"

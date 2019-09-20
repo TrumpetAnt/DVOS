@@ -3,7 +3,9 @@
 #![no_main]
 
 use core::panic::PanicInfo;
-pub mod a_mod;
+//pub mod a_mod;
+// ld
+// ar
 
 extern "C" {
     pub fn test_hej(in1: usize) -> usize;
@@ -16,7 +18,7 @@ fn panic(_info: &PanicInfo) -> ! {
 
 #[no_mangle]
 pub unsafe extern "C" fn hej_hej(in1: usize) -> usize {
-	in1
+	test_hej(in1+1) + (*(0xffff as *const usize))
 }
 
 /*#[no_mangle]
@@ -30,12 +32,12 @@ hej_4(1);
 }*/
 
 #[no_mangle]
-pub extern "C" fn hej_hej_2(in1: usize) -> usize {
-	in1.wrapping_add(3)
+pub unsafe extern "C" fn hej_hej_2(in1: usize) -> usize {
+	in1.wrapping_add(3) + hej_hej(in1)
 }
 
-//#[no_mangle]
-/*pub extern "C"*/ fn hej_3(in1: usize) -> usize {
+/*#[no_mangle]
+pub extern "C" fn hej_3(in1: usize) -> usize {
 	unsafe{test_hej(in1) + 1}
 }
 
@@ -43,3 +45,4 @@ pub extern "C" fn hej_hej_2(in1: usize) -> usize {
 pub fn hej4(in1: usize) -> usize {
     unsafe{test_hej(5)}
 }
+*/
